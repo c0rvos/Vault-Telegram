@@ -22,6 +22,27 @@ contextBridge.exposeInMainWorld("vaultDesktop", {
       return () => needHandlers.delete(handler);
     },
   },
+  bot: {
+    connect: (token) => ipcRenderer.invoke("bot:connect", token),
+    status: () => ipcRenderer.invoke("bot:status"),
+    setState: (state) => ipcRenderer.invoke("bot:setState", state),
+    onEvent: (handler) => {
+      const listener = async (_, event) => {
+        try {
+          const result = await handler(event.type, event.payload);
+          ipcRenderer.send("bot:event-result", { id: event.id, ok: true, result });
+        } catch (error) {
+          ipcRenderer.send("bot:event-result", {
+            id: event.id,
+            ok: false,
+            error: error?.message || String(error),
+          });
+        }
+      };
+      ipcRenderer.on("bot:event", listener);
+      return () => ipcRenderer.removeListener("bot:event", listener);
+    },
+  },
   python: {
     status: () => ipcRenderer.invoke("python:status"),
     reconnect: () => ipcRenderer.invoke("python:reconnect"),

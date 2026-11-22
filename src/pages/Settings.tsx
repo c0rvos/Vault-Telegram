@@ -159,7 +159,7 @@ export function SettingsPage() {
               <div className="mb-2 text-muted">Create a bot with @BotFather and paste its token.</div>
               <div className="flex gap-2">
                 <input type="password" value={token} onChange={(e) => setToken(e.target.value)} placeholder="123456789:AAE…" className={inputCls} autoComplete="off" />
-                <Btn primary disabled={!token.trim()} onClick={() => v.connect(token) && setToken("")}><Bot size={14} /> Connect</Btn>
+                <Btn primary disabled={!token.trim()} onClick={async () => { if (await v.connect(token)) setToken(""); }}><Bot size={14} /> Connect</Btn>
               </div>
             </>
           )}

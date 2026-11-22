@@ -17,7 +17,7 @@ export function BotSim() {
   const vR = useRef(v);
   vR.current = v;
   const [msgs, setMsgs] = useState<Msg[]>([
-    { id: 0, text: "Telegram bot simulator. Send commands like /start, /files, /find invoice, or attach a file — the bot behaves like the real Vault bot, against your local index." },
+    { id: 0, text: "Local bot simulator. It only changes this Vault index. The real bot runs in Telegram while the desktop app is open." },
   ]);
   const [text, setText] = useState("");
   const idc = useRef(1);
@@ -126,7 +126,7 @@ export function BotSim() {
     const pred = await vR.current.suggest(file.name, file.size, capFolder);
     const save = async (chat: number, folder: string, how: string) => {
       const rec = await vR.current.addRec({ name: file.name, size: file.size, folder, chat, from: "Bot", file });
-      if (rec) say(`✅ Saved ${how}\n${rec.where} / ${rec.folder}${rec.dl ? "" : "\n⚠ Over 20 MB: download it via /get " + rec.id}`);
+      if (rec) say(`🧪 Simulated save ${how}\n${rec.where} / ${rec.folder}\nNothing was posted to Telegram by this simulator.${rec.dl ? "" : "\n⚠ Over 20 MB: use /get " + rec.id + " in the real bot."}`);
     };
     const learned = vR.current.python.running ? vR.current.python.samples : d.model.n;
     if (d.cfg.auto && pred.dest && pred.conf >= 0.7 && learned >= 3) {

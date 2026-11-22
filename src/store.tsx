@@ -132,7 +132,7 @@ interface Ctx {
   dialog: Dialog | null; setDialog: (d: Dialog | null) => void;
   botOpen: boolean; setBotOpen: (b: boolean) => void;
   // actions
-  connect: (token: string) => boolean; disconnect: () => void; unlock: () => void; setAuto: (b: boolean) => void;
+  connect: (token: string) => Promise<boolean>; disconnect: () => void; unlock: () => void; setAuto: (b: boolean) => void;
   setDefault: (id: number | null) => void; addChannel: (input: string) => boolean; removeChannel: (id: number) => void;
   addFolder: (name: string) => void; renameFolder: (name: string, to: string) => void; deleteFolder: (name: string) => void;
   moveFolder: (name: string, target: string) => boolean;
@@ -144,7 +144,7 @@ interface Ctx {
   openLink: (id: number) => void; suggest: (name: string, size: number, folder?: string) => Promise<Prediction>;
   train: () => Promise<void>; restartAI: () => Promise<void>; preview: (id: number) => Promise<Preview>;
   python: VaultPythonStatus;
-  addRec: (o: { name: string; size: number; folder: string; chat: number; from: FileRec["from"]; file?: File; dl?: boolean; msg?: number; fid?: string; noLearn?: boolean }) => Promise<FileRec | null>;
+  addRec: (o: { name: string; size: number; folder: string; chat: number; from: FileRec["from"]; file?: File; dl?: boolean; msg?: number; fid?: string; parts?: Part[]; noLearn?: boolean }) => Promise<FileRec | null>;
   importChannel: (info: { id: number; title: string; username?: string }, files: { name: string; size: number; folder: string; msg: number; fid: string }[]) => Promise<number>;
   setOwner: (n: number) => void; logLine: (m: string) => void; hasBlob: (id: number) => boolean;
   refresh: () => void; tick: number;
@@ -181,7 +181,17 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const pythonRef = useRef(pythonStatus);
   pythonRef.current = pythonStatus;
   const pythonApi = window.vaultDesktop?.python;
+  const botApi = window.vaultDesktop?.bot;
   const toastT = useRef<number>(0);
+  type BotActions = {
+    addRec: Ctx["addRec"];
+    setOwner: Ctx["setOwner"];
+    setAuto: Ctx["setAuto"];
+    removeFile: Ctx["removeFile"];
+    logLine: Ctx["logLine"];
+    suggest: Ctx["suggest"];
+  };
+  const botActions = useRef<BotActions>(null as never);
 
   useEffect(() => { localStorage.setItem(KEY, JSON.stringify(db)); }, [db]);
   useEffect(() => {
@@ -195,6 +205,63 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     pythonApi.status().then((s) => { if (alive) setPythonStatus(s); }).catch(() => {});
     return () => { alive = false; };
   }, [pythonApi]);
+
+  // Keep the real Telegram bot in the main process in sync with this Vault index.
+  useEffect(() => {
+    if (!botApi) return;
+    void botApi.setState({
+      token: db.cfg.token,
+      botUsername: db.bot?.username || "",
+      owner: db.cfg.owner,
+      auto: db.cfg.auto,
+      defaultChannels: db.cfg.default_channels ?? [],
+      channels: db.channels.map((c) => ({ id: c.id, title: c.title, username: c.username })),
+      files: db.files.map((f) => ({
+        id: f.id, name: f.name, size: f.size, folder: f.folder, chat: f.chat,
+        at: f.at, where: f.where, parts: f.parts,
+      })),
+      folders: db.folders,
+      pythonSamples: pythonStatus.samples,
+    }).catch(() => {});
+  }, [botApi, db, pythonStatus.samples]);
+
+  useEffect(() => {
+    if (!botApi) return;
+    return botApi.onEvent(async (type, payload) => {
+      const actions = botActions.current;
+      switch (type) {
+        case "decision":
+          return actions.suggest(String(payload.name || ""), Number(payload.size || 0), String(payload.folder || ""));
+        case "claim": {
+          const owner = Number(payload.owner);
+          if (owner && dbRef.current.cfg.owner == null) actions.setOwner(owner);
+          return { owner: dbRef.current.cfg.owner ?? owner };
+        }
+        case "saved": {
+          const rec = await actions.addRec({
+            name: String(payload.name || "file"),
+            size: Number(payload.size || 0),
+            folder: String(payload.folder || "General"),
+            chat: Number(payload.chat),
+            from: "Bot",
+            parts: (payload.parts || []) as Part[],
+          });
+          return { id: rec?.id ?? null };
+        }
+        case "auto":
+          actions.setAuto(!!payload.auto);
+          return { ok: true };
+        case "remove":
+          actions.removeFile(Number(payload.id));
+          return { ok: true };
+        case "log":
+          actions.logLine(String(payload.msg || ""));
+          return { ok: true };
+        default:
+          return { ok: false };
+      }
+    });
+  }, [botApi]);
 
   const update = useCallback((fn: (d: Db) => void) => {
     const d = structuredClone(dbRef.current);
@@ -260,12 +327,22 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const up = () => go(parentOf(path));
 
   // ----- bot / cfg
-  const connect = (token: string) => {
+  const connect = async (token: string) => {
     const t = token.trim();
     if (!/^\d{6,12}:[A-Za-z0-9_-]{30,}$/.test(t)) { toast("That doesn't look like a BotFather token (123456:ABC…)", "err"); return false; }
-    update((d) => { d.cfg.token = t; d.bot = { username: `vault_${t.slice(0, 4)}_bot` }; });
-    logLine("Bot connected");
-    toast("Bot connected — send it /start to claim ownership");
+    const api = window.vaultDesktop?.bot;
+    if (!api) { toast("Real bot connections need the desktop app", "err"); return false; }
+    toast("Checking bot token with Telegram…");
+    let result: Awaited<ReturnType<VaultBotApi["connect"]>>;
+    try {
+      result = await api.connect(t);
+    } catch (error) {
+      result = { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+    if (!result.ok) { toast(`Bot connect failed: ${result.error || "unknown error"}`, "err"); return false; }
+    update((d) => { d.cfg.token = t; d.bot = { username: String(result.username || "").replace(/^@/, "") }; });
+    logLine(`Bot connected as @${result.username ?? "bot"}`);
+    toast(`@${result.username ?? "bot"} connected — send /start in Telegram to claim ownership`);
     return true;
   };
   const disconnect = () => { update((d) => { d.cfg.token = ""; d.bot = null; }); toast("Bot disconnected"); };
@@ -522,7 +599,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     return b;
   };
 
-  const addRec: Ctx["addRec"] = async ({ name, size, folder, chat, from, file, dl, msg, fid, noLearn }) => {
+  const addRec: Ctx["addRec"] = async ({ name, size, folder, chat, from, file, dl, msg, fid, parts: realParts, noLearn }) => {
     const ch = dbRef.current.channels.find((c) => c.id === chat);
     if (!ch) { toast("Channel not found — add a channel first", "err"); return null; }
     const f = normFolder(folder).slice(0, 60) || "General";
@@ -531,12 +608,14 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     let rec!: FileRec;
     update((d) => {
       id = d.nextId++;
-      const parts = Array.from({ length: n }, (_, k) =>
-        k === 0 && msg && fid
-          ? { msg, fid }
-          : { msg: d.nextMsg++, fid: `BQAD${id}x${k}${Math.random().toString(36).slice(2, 8)}` }
-      );
-      if (msg) d.nextMsg = Math.max(d.nextMsg, msg + 1);
+      const parts = realParts?.length
+        ? realParts
+        : Array.from({ length: n }, (_, k) =>
+            k === 0 && msg && fid
+              ? { msg, fid }
+              : { msg: d.nextMsg++, fid: `BQAD${id}x${k}${Math.random().toString(36).slice(2, 8)}` }
+          );
+      if (parts.length) d.nextMsg = Math.max(d.nextMsg, ...parts.map((p) => Number(p.msg || 0) + 1));
       rec = {
         id, name, size, kind: kindOf(name), where: ch.title, folder: f, from, at: Date.now(),
         link: ch.username ? `https://t.me/${ch.username}/${parts[0].msg}` : undefined,
@@ -703,6 +782,8 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     e.preventDefault(); e.stopPropagation();
     setMenu({ x: e.clientX, y: e.clientY, items });
   };
+
+  botActions.current = { addRec, setOwner, setAuto, removeFile, logLine, suggest };
 
   const value: Ctx = {
     db, page, setPage, path, go, back, fwd, up, canBack: hist.i > 0, canFwd: hist.i < hist.h.length - 1,

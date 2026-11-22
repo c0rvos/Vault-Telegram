@@ -98,6 +98,41 @@ declare global {
     learn: (sample: VaultPythonSample) => Promise<{ samples: number }>;
   }
 
+  interface VaultBotStatus {
+    running: boolean;
+    tokenSet: boolean;
+    username: string;
+    lastError: string;
+  }
+
+  interface VaultBotState {
+    token: string;
+    botUsername: string;
+    owner: number | null;
+    auto: boolean;
+    defaultChannels: number[];
+    channels: Array<{ id: number; title: string; username?: string }>;
+    files: Array<{
+      id: number;
+      name: string;
+      size: number;
+      folder: string;
+      chat: number;
+      at: number;
+      where?: string;
+      parts: Array<{ msg: number; fid: string }>;
+    }>;
+    folders: string[];
+    pythonSamples: number;
+  }
+
+  interface VaultBotApi {
+    connect: (token: string) => Promise<{ ok: boolean; username?: string; error?: string }>;
+    status: () => Promise<VaultBotStatus>;
+    setState: (state: VaultBotState) => Promise<VaultBotStatus>;
+    onEvent: (handler: (type: string, payload: Record<string, any>) => any | Promise<any>) => () => void;
+  }
+
   interface VaultWindowApi {
     minimize: () => Promise<void>;
     toggleMaximize: () => Promise<boolean>;
@@ -109,6 +144,7 @@ declare global {
   interface Window {
     vaultDesktop?: {
       telegram: VaultTelegramApi;
+      bot: VaultBotApi;
       python: VaultPythonApi;
       window: VaultWindowApi;
     };

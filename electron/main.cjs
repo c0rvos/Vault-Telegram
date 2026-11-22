@@ -1,6 +1,7 @@
 const { app, BrowserWindow, shell, dialog, ipcMain } = require("electron");
 const path = require("path");
 const { registerTelegramIpc } = require("./telegram.cjs");
+const { registerBotIpc } = require("./bot.cjs");
 const { PythonBrain, registerBrainIpc } = require("./brain.cjs");
 
 let mainWindow;
@@ -96,6 +97,7 @@ app.whenReady().then(async () => {
   brain = new PythonBrain(app);
   registerBrainIpc(ipcMain, brain);
   registerTelegramIpc(app, ipcMain, () => mainWindow);
+  registerBotIpc(ipcMain, () => mainWindow);
   registerWindowIpc();
   await brain.start();
   createWindow();

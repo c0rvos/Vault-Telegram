@@ -15,8 +15,9 @@ It is a React + TypeScript app with three small back ends:
 - Selects files the Windows way: left-click, `Ctrl`/`Cmd`+click, `Shift`+click, `Ctrl+A`, checkboxes, marquee drag, and `Ctrl`+arrow keys.
 - Moves one or many files by drag-and-drop, the context menu, or **Move all**. Folders can be dragged too.
 - Searches by name, folder, extension, type, size, modified date, and hidden state — for example `*.png`, `ext:pdf`, `type:image`, `size:>10mb`, `modified:>2026-01-01`, `hidden`, or `!hidden`.
-- Runs a Telegram bot that can save files and answer `/files`, `/folders`, `/find`, `/get`, `/storage`, and `/help`.
-- Can save your folder tree to Telegram channels and restore it later. **Only folders are synced**; file uploads/downloads in the library are simulated.
+- Runs a real Telegram bot while the app is open: files sent to it are downloaded from Telegram, posted into your configured channel, and indexed with their real message IDs.
+- Answers `/files`, `/folders`, `/find`, `/get`, `/storage`, `/auto`, and `/help` in Telegram.
+- Can save your folder tree to Telegram channels and restore it later. Folder sync covers folders only. The library's own Upload/Download buttons are simulated, but files sent to the bot are real.
 - Learns from filenames, folders, sizes, and captions. It never reads file contents.
 
 > The bot only runs while the Vault app is open, because the app is what talks to Telegram.
@@ -93,7 +94,9 @@ Adding a channel also scans it for existing Telegram items and imports them into
 
 ## 4. Test it
 
-Send any file to your bot. It should answer `Saving…` and then `Saved #1 in (your channel)`. Try `/files` to see your files as buttons.
+Send any file to your bot. It should answer `Saving…` and then `Saved #1 in (your channel)`. Open the channel in Telegram and you will see the actual file. Try `/files` to see your files as buttons.
+
+The **Bot** panel inside Vault is only a local simulator; use the real Telegram chat with your bot for real uploads.
 
 If the channel step says the bot isn't an admin, recheck step 2. Google Drive setup is not covered here yet.
 
