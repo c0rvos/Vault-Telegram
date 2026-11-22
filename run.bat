@@ -1,6 +1,13 @@
 @echo off
 cd /d "%~dp0"
-where cargo >nul 2>nul || (echo Install Rust first: https://rustup.rs & pause & exit /b 1)
-cargo tauri --version >nul 2>nul || cargo install tauri-cli --version "^2" --locked
-cargo tauri dev
+where node >nul 2>nul || (echo Install Node.js 20.19+ from https://nodejs.org & pause & exit /b 1)
+if not exist node_modules (
+  echo Installing dependencies...
+  call npm.cmd install
+  if errorlevel 1 (
+    pause
+    exit /b 1
+  )
+)
+call npm.cmd start
 pause
