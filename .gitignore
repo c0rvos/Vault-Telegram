@@ -1,0 +1,16 @@
+# dependencies
+node_modules/
+
+# generated builds
+dist/
+release/
+src-tauri/target/
+
+# logs and OS files
+*.log
+.DS_Store
+Thumbs.db
+
+# editor settings
+.vscode/
+.idea/
